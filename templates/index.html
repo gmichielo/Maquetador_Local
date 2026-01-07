@@ -3,31 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <title>CV Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-<h2>Generador de CV</h2>
+<div class="card">
+    <h2>Generador de CV</h2>
 
-<form method="POST" enctype="multipart/form-data">
-    <label>Subir CV (PDF):</label><br>
-    <input type="file" name="cv_pdf" required><br><br>
+    <form method="POST" enctype="multipart/form-data">
+        <label>CV en PDF</label>
+        <input type="file" name="cv_pdf" required>
 
-    <label>Plantilla:</label><br>
-    <select name="plantilla" required>
-        <option value="1">Plantilla 1</option>
-        <option value="2">Plantilla 2</option>
-        <option value="3">Plantilla 3</option>
-    </select><br><br>
+        <label>Plantilla</label>
+        <select name="plantilla" required>
+            <option value="1">Plantilla Profesional</option>
+            <option value="2">Plantilla Moderna</option>
+            <option value="3">Plantilla Minimal</option>
+        </select>
 
-    <button type="submit">Generar CV</button>
-</form>
+        <button type="submit">Generar CV</button>
+    </form>
 
-{% if success %}
-<hr>
-<h3>CV generado correctamente</h3>
-<a href="/download/{{ docx }}">Descargar DOCX</a><br>
-<a href="/download/{{ pdf }}">Descargar PDF</a>
-{% endif %}
+    {% if success %}
+        <div class="success">
+            <strong>✔ CV generado correctamente</strong><br>
+            <a href="/download/{{ docx }}">Descargar DOCX</a><br>
+            <a href="/download/{{ pdf }}">Descargar PDF</a>
+        </div>
+    {% endif %}
+</div>
 
 </body>
 </html>
