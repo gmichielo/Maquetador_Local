@@ -16,9 +16,9 @@
 
         <label>Plantilla</label>
         <select name="plantilla" required>
-            <option value="1">Plantilla Profesional</option>
-            <option value="2">Plantilla Moderna</option>
-            <option value="3">Plantilla Minimal</option>
+            <option value="1">Plantilla 1</option>
+            <option value="2">Plantilla 2</option>
+            <option value="3">Plantilla 3</option>
         </select>
 
         <button type="submit">Generar CV</button>
@@ -27,8 +27,8 @@
     {% if success %}
         <div class="success">
             <strong>✔ CV generado correctamente</strong><br>
-            <a href="/download/{{ docx }}">Descargar DOCX</a><br>
-            <a href="/download/{{ pdf }}">Descargar PDF</a>
+            <a href="/download/{{ docx }}">📘 Descargar DOCX 📘</a><br>
+            <a href="/download/{{ pdf }}">📕 Descargar PDF 📕</a>
         </div>
     {% endif %}
 </div>

@@ -269,7 +269,6 @@ def generate_cv_from_template(template_path, cv_json, output_dir="output"):
     replace_placeholders(doc, cv_json_to_docx_data(cv_json))
     doc.save(output_docx)
 
-    # 🔴 SOLUCIÓN CLAVE
     pythoncom.CoInitialize()
     try:
         convert(output_docx, output_pdf)
