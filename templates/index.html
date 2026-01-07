@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>CV Generator</title>
+</head>
+<body>
+
+<h2>Generador de CV</h2>
+
+<form method="POST" enctype="multipart/form-data">
+    <label>Subir CV (PDF):</label><br>
+    <input type="file" name="cv_pdf" required><br><br>
+
+    <label>Plantilla:</label><br>
+    <select name="plantilla" required>
+        <option value="1">Plantilla 1</option>
+        <option value="2">Plantilla 2</option>
+        <option value="3">Plantilla 3</option>
+    </select><br><br>
+
+    <button type="submit">Generar CV</button>
+</form>
+
+{% if success %}
+<hr>
+<h3>CV generado correctamente</h3>
+<a href="/download/{{ docx }}">Descargar DOCX</a><br>
+<a href="/download/{{ pdf }}">Descargar PDF</a>
+{% endif %}
+
+</body>
+</html>

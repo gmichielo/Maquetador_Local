@@ -1,0 +1,83 @@
+* {
+    box-sizing: border-box;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont;
+}
+
+body {
+    background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+    min-height: 100vh;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+}
+
+.card {
+    background: #1e293b;
+    width: 420px;
+    padding: 30px;
+    border-radius: 14px;
+    box-shadow: 0 20px 40px rgba(0,0,0,.4);
+}
+
+h2 {
+    margin-top: 0;
+    text-align: center;
+    font-weight: 600;
+}
+
+label {
+    font-size: 14px;
+    opacity: .85;
+}
+
+input[type="file"],
+select {
+    width: 100%;
+    margin-top: 6px;
+    margin-bottom: 18px;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    background: #0f172a;
+    color: #fff;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .15s, box-shadow .15s;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(34,197,94,.4);
+}
+
+.success {
+    margin-top: 20px;
+    padding: 15px;
+    background: #052e16;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.success a {
+    display: inline-block;
+    margin-top: 10px;
+    color: #4ade80;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.success a:hover {
+    text-decoration: underline;
+}
