@@ -14,38 +14,48 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 PLANTILLAS = {
     "1": "Plantilla1.docx",
     "2": "Plantilla2.docx",
-    "3": "Plantilla3.docx"
+    "3": "Plantilla3.docx",
+    "4": "Plantilla4.docx"
 }
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        pdf = request.files["cv_pdf"]
+        pdf_file = request.files["cv_pdf"]
         plantilla_id = request.form["plantilla"]
 
-        pdf_path = os.path.join(UPLOAD_FOLDER, pdf.filename)
-        pdf.save(pdf_path)
+        for f in os.listdir(OUTPUT_FOLDER):
+            os.remove(os.path.join(OUTPUT_FOLDER, f))
 
-        plantilla_path = os.path.join(
-            TEMPLATES_FOLDER,
-            PLANTILLAS[plantilla_id]
-        )
+        # Guardar PDF subido
+        pdf_path = os.path.join(UPLOAD_FOLDER, pdf_file.filename)
+        pdf_file.save(pdf_path)
 
+        # Obtener plantilla
+        plantilla_path = os.path.join(TEMPLATES_FOLDER, PLANTILLAS.get(plantilla_id))
+
+        # Parsear CV
         cv_json = parse_cv(pdf_path)
 
+        # Generar DOCX y PDF
         docx_path, pdf_out = generate_cv_from_template(
-            plantilla_path,
-            cv_json,
-            OUTPUT_FOLDER
+        plantilla_path,
+        cv_json,
+        OUTPUT_FOLDER
         )
 
+        docx_name = os.path.basename(docx_path)
+        pdf_name = os.path.basename(pdf_out) if pdf_out and os.path.exists(pdf_out) else None
+
+        # Renderizar template con archivos recién generados
         return render_template(
             "index.html",
             success=True,
-            docx=os.path.basename(docx_path),
-            pdf=os.path.basename(pdf_out)
+            docx=docx_name,
+            pdf=pdf_name
         )
 
+    # GET: mostrar página sin archivos
     return render_template("index.html", success=False)
 
 

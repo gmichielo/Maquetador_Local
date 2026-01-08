@@ -10,7 +10,7 @@
 <div class="card">
     <h2>Generador de CV</h2>
 
-    <form method="POST" enctype="multipart/form-data">
+    <form method="POST" enctype="multipart/form-data" id="cvForm">
         <label>CV en PDF</label>
         <input type="file" name="cv_pdf" required>
 
@@ -19,9 +19,13 @@
             <option value="1">Plantilla 1</option>
             <option value="2">Plantilla 2</option>
             <option value="3">Plantilla 3</option>
+            <option value="4">Plantilla 4</option>
         </select>
 
-        <button type="submit">Generar CV</button>
+        <button type="submit" id="submitBtn">
+            <span class="btn-text">Generar CV</span>
+            <span class="spinner"></span>
+        </button>
     </form>
 
     {% if success %}
@@ -33,5 +37,9 @@
     {% endif %}
 </div>
 
-</body>
-</html>
+<!-- Overlay bloqueante -->
+<div id="overlay">
+    <div class="overlay-content">
+        <span class="spinner"></span>
+    </div>
+</div>

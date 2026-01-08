@@ -1,24 +1,18 @@
-from PyPDF2 import PdfReader
+import pdfplumber
 from docx import Document
 from docx2pdf import convert
-import pythoncom
+import platform
 import re
 import unicodedata
-import json
 import shutil
 import os
+import time
+import threading
+import pythoncom
 
-PLANTILLA_UNO = r"C:\Users\Gabriel\Documents\CVs Gabriel\Plantilla1.docx"
-PLANTILLA_DOS = r"C:\Users\Gabriel\Documents\CVs Gabriel\Plantilla2.docx"
-PLANTILLA_TRES = r"C:\Users\Gabriel\Documents\CVs Gabriel\Plantilla3.docx"
-
-PLANTILLAS = (PLANTILLA_UNO, PLANTILLA_DOS, PLANTILLA_TRES)
-
-plantilla = ""
-selected_plantilla = "0"
-pdf_original = r"C:\Users\Gabriel\Documents\CVs Gabriel\CV_Gabriel_Michielon (FSa).pdf"
-
-# 1️ UTILIDADES BASE
+# =========================================================
+# 1. UTILIDADES
+# =========================================================
 
 def normalize_text(text):
     text = unicodedata.normalize("NFKD", text)
@@ -29,176 +23,147 @@ def normalize_text(text):
 
 
 def read_pdf(path):
-    reader = PdfReader(path)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text() or ""
-    return text
-
-# PROTEGER / RESTAURAR URLs
-
-def protect_urls(text):
-    urls = {}
-    pattern = r'https?://\S+|www\.\S+|linkedin\.com/\S+|github\.com/\S+'
-
-    def replacer(match):
-        key = f"__URL_{len(urls)}__"
-        urls[key] = match.group(0)
-        return key
-
-    protected_text = re.sub(pattern, replacer, text, flags=re.IGNORECASE)
-    return protected_text, urls
+    blocks = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            txt = page.extract_text(layout=True)
+            if txt:
+                blocks.append(txt)
+    return "\n".join(blocks)
 
 
-def restore_urls(text, urls):
-    for k, v in urls.items():
-        text = text.replace(k, v)
-    return text
-
-
-# 2️ RECONSTRUIR ESTRUCTURA ATS
+# =========================================================
+# 2. NORMALIZACIÓN ATS
+# =========================================================
 
 def rebuild_structure(text):
-    # 1️⃣ Proteger URLs ANTES de tocar el texto
-    text, urls = protect_urls(text)
-
     headers = [
-        "PERFIL PROFESIONAL",
-        "EXPERIENCIA LABORAL",
-        "HABILIDADES TECNICAS",
-        "EDUCACION",
-        "IDIOMAS",
-        "LENGUAJES",
+        "perfil profesional", "profile",
+        "experiencia laboral", "work experience",
+        "education", "educacion",
+        "skills", "habilidades",
+        "languages", "idiomas"
     ]
 
     for h in headers:
-        text = re.sub(rf"\s*{h}\s*", f"\n{h}\n", text, flags=re.IGNORECASE)
+        text = re.sub(rf"\s*{h}\s*", f"\n{h.upper()}\n", text, flags=re.IGNORECASE)
 
-    text = re.sub(r"[•\*\|]", "\n", text)
-
-    # Emails (solo salto antes)
-    text = re.sub(r"(?<!\S)(\S+@\S+)", r"\n\1", text)
-
-    # Teléfonos (sin romperlos)
-    text = re.sub(
-        r'(?<!\S)(\+\d{1,3}[\s\-]?\(?\d{2,3}\)?[\s\-]?\d{3}[\s\-]?\d{3})',
-        r'\n\1',
-        text
-    )
-
-    text = normalize_text(text)
-
-    # 2️⃣ Restaurar URLs intactas
-    text = restore_urls(text, urls)
-
-    return text
-
+    # Insertar salto de línea antes de cualquier • (u otros bullets) y mantener el símbolo
+    text = re.sub(r"\s*([•\*\|▪●])\s*", r"\n\1 ", text)
+    
+    return normalize_text(text)
 
 def split_lines(text):
     return [l.strip() for l in text.split("\n") if len(l.strip()) > 2]
 
 
-# 3️ EXTRACCIÓN DE DATOS
+# =========================================================
+# 3. EXTRACCIÓN
+# =========================================================
 
 def extract_name(lines):
-    for line in lines[:5]:
-        if line.isupper() and len(line.split()) >= 2 and not any(c.isdigit() for c in line):
-            return line.title()
-    return ""
+    """
+    Extrae el nombre de un CV, intentando ser más flexible.
+    """
+    for line in lines[:10]:  # solo revisar primeras 10 líneas
+        line_clean = line.strip()
+        # ignorar líneas vacías o con números o emails
+        if not line_clean:
+            continue
+        if re.search(r'\d', line_clean):
+            continue
+        if re.search(r'\S+@\S+', line_clean):  # ignorar emails
+            continue
+        if len(line_clean.split()) >= 2:  # debe tener al menos 2 palabras
+            # eliminar títulos o palabras comunes como "perfil", "experiencia"
+            if re.search(r'perfil|experiencia|skills|educacion', line_clean, re.IGNORECASE):
+                continue
+            return line_clean  # devuelve tal cual
+    return "Nombre no detectado"
 
-def normalize_urls(text):
-    # Une saltos de línea dentro de URLs
-    text = re.sub(
-        r'(https?://[^\s]+)\s*\n\s*([^\s]+)',
-        r'\1\2',
-        text
-    )
-    return text
 
 def extract_contact(text):
-    email_match = re.search(r'\S+@\S+', text)
+    email = re.search(r'\S+@\S+', text)
 
-    phone_match = re.search(
-        r'(\+\d{1,3}[\s\-]?)?(\(?\d{2,3}\)?[\s\-]?)?\d{3}[\s\-]?\d{3}',
+    phone = re.search(
+        r'(\+\d{1,3}[\s\-]?)?(\(?\d{2,4}\)?[\s\-]?)?\d{3,4}[\s\-]?\d{3,4}',
         text
     )
 
-    github_match = re.search(
-        r'github\.com/[A-Za-z0-9\-_]+',
-        text,
-        re.IGNORECASE
-    )
+    github = re.search(r'github\.com/\S+', text, re.IGNORECASE)
+    linkedin = re.search(r'https?://(www\.)?linkedin\.com/\S+', text, re.IGNORECASE)
 
-    linkedin_match = re.search(
-        r'(https?:\/\/)?(www\.)?linkedin\.com\/(in|pub)\/[A-Za-z0-9\-_%]+\/?',
-        text,
-        re.IGNORECASE
-    )
-
-    telefono = phone_match.group(0) if phone_match else ""
-    telefono = telefono.replace("\n", " ").strip()
-    telefono = re.sub(r'\s+', ' ', telefono)
-
-    linkedin = linkedin_match.group(0) if linkedin_match else ""
-    linkedin = linkedin.replace("\n", "").replace(" ", "").strip()
+    telefono = phone.group(0).replace("\n", " ").strip() if phone else ""
 
     return {
-        "email": email_match.group(0) if email_match else "",
+        "email": email.group(0) if email else "",
         "telefono": telefono,
-        "github": github_match.group(0) if github_match else "",
-        "linkedin": linkedin
+        "github": github.group(0) if github else "",
+        "linkedin": linkedin.group(0) if linkedin else ""
     }
 
 
 SECTIONS = {
-    "perfil": ["perfil profesional"],
-    "experiencia": ["experiencia laboral"],
-    "skills": ["habilidades", "lenguajes"],
-    "educacion": ["educacion"],
-    "idiomas": ["idiomas"]
+    "perfil": ["perfil profesional", "profile"],
+    "experiencia": ["experiencia laboral", "work experience","experiencia profesional"],
+    "educacion": ["educacion", "education","certificaciones","formacion academica"],
+    "skills": ["skills", "habilidades","experticia tecnica"],
+    "idiomas": ["idiomas", "languages", "language"],
+    "proyectos":["proyectos","proyectos destacados"]
 }
 
 
 def split_by_sections(lines):
-    sections = {k: [] for k in SECTIONS}
+    data = {k: [] for k in SECTIONS}
     current = None
 
     for line in lines:
-        lower = line.lower()
-        found = False
-
-        for key, aliases in SECTIONS.items():
-            if any(a in lower for a in aliases):
-                current = key
-                found = True
+        low = line.lower()
+        for k, keys in SECTIONS.items():
+            if any(h in low for h in keys):
+                current = k
                 break
+        else:
+            if current:
+                data[current].append(line)
 
-        if not found and current:
-            sections[current].append(line)
-
-    return sections
+    return data
 
 
 def extract_skills(lines):
-    skills = set()
-    for line in lines:
-        for p in re.split(r"[,:]", line):
-            p = p.strip()
-            if len(p) > 2:
-                skills.add(p)
-    return sorted(skills)
+    skills = []
+    seen = set()
+
+    for l in lines:
+        for s in re.split(r"[,:]", l):
+            s = s.strip()
+
+            if len(s) <= 2:
+                continue
+
+            # evitar duplicados manteniendo orden
+            key = s.lower()
+            if key in seen:
+                continue
+
+            seen.add(key)
+            skills.append(s)
+
+    return skills
 
 
 def extract_idiomas(lines):
     idiomas = {}
-    for line in lines:
-        matches = re.findall(r'([A-Za-zÁÉÍÓÚÑáéíóúñ]+)\s*:\s*([A-Za-z0-9]+)', line)
-        for lang, level in matches:
-            idiomas[lang] = level
+    for l in lines:
+        matches = re.findall(r'([A-Za-zÁÉÍÓÚáéíóú]+)\s*[:\-]\s*(\w+)', l)
+        for lang, lvl in matches:
+            idiomas[lang] = lvl
     return idiomas
 
 
-# 4️ PARSER PRINCIPAL
+# =========================================================
+# 4. PARSER PRINCIPAL
+# =========================================================
 
 def parse_cv(pdf_path):
     raw = read_pdf(pdf_path)
@@ -207,7 +172,7 @@ def parse_cv(pdf_path):
     sections = split_by_sections(lines)
 
     return {
-        "nombre": extract_name(lines),
+        "nombre": extract_name(lines) or "Nombre no detectado",
         "contacto": extract_contact(structured),
         "perfil": " ".join(sections["perfil"]),
         "skills": extract_skills(sections["skills"]),
@@ -217,7 +182,9 @@ def parse_cv(pdf_path):
     }
 
 
-# 5️ WORD TEMPLATE ENGINE
+# =========================================================
+# 5. DOCX / PDF
+# =========================================================
 
 def cv_json_to_docx_data(cv):
     return {
@@ -235,45 +202,95 @@ def cv_json_to_docx_data(cv):
 
 
 def replace_placeholders(doc, data):
-    def replace_in_paragraph(paragraph):
-        for run in paragraph.runs:
-            for key, value in data.items():
-                placeholder = f"{{{{{key}}}}}"
-                if placeholder in run.text:
-                    run.text = run.text.replace(placeholder, value)
-
     for p in doc.paragraphs:
-        replace_in_paragraph(p)
+        for run in p.runs:
+            for k, v in data.items():
+                run.text = run.text.replace(f"{{{{{k}}}}}", v)
 
-    for table in doc.tables:
-        for row in table.rows:
-            for cell in row.cells:
-                for p in cell.paragraphs:
-                    replace_in_paragraph(p)
+    for t in doc.tables:
+        for r in t.rows:
+            for c in r.cells:
+                for p in c.paragraphs:
+                    for run in p.runs:
+                        for k, v in data.items():
+                            run.text = run.text.replace(f"{{{{{k}}}}}", v)
 
 
 def generate_cv_from_template(template_path, cv_json, output_dir="output"):
+    """
+    Genera un DOCX y un PDF desde la plantilla usando docx2pdf.
+    Usa threading + pythoncom.CoInitialize() para que funcione en Flask.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
-    output_docx = os.path.join(output_dir, f"CV_FINAL_{cv_json['nombre']}.docx")
-    output_pdf = os.path.join(output_dir, f"CV_FINAL_{cv_json['nombre']}.pdf")
+    # -----------------------------
+    # Preparar nombres únicos
+    # -----------------------------
+    safe_name = cv_json["nombre"].replace(" ", "_") or "CV"
+    timestamp = int(time.time())
+    docx_out = os.path.abspath(os.path.join(output_dir, f"CV_{safe_name}_{timestamp}.docx"))
+    pdf_out = os.path.abspath(os.path.join(output_dir, f"CV_{safe_name}_{timestamp}.pdf"))
+    template_path = os.path.abspath(template_path)
 
-    if os.path.exists(output_docx):
-        os.remove(output_docx)
-    if os.path.exists(output_pdf):
-        os.remove(output_pdf)
+    # -----------------------------
+    # Limpiar archivos antiguos (opcional)
+    # -----------------------------
+    if os.path.exists(docx_out):
+        os.remove(docx_out)
+    if os.path.exists(pdf_out):
+        os.remove(pdf_out)
 
-    shutil.copy(template_path, output_docx)
+    # -----------------------------
+    # Copiar plantilla y reemplazar placeholders
+    # -----------------------------
+    shutil.copy(template_path, docx_out)
+    doc = Document(docx_out)
 
-    doc = Document(output_docx)
-    replace_placeholders(doc, cv_json_to_docx_data(cv_json))
-    doc.save(output_docx)
+    data = cv_json_to_docx_data(cv_json)
 
-    pythoncom.CoInitialize()
-    try:
-        convert(output_docx, output_pdf)
-    finally:
-        pythoncom.CoUninitialize()
+    # Reemplazo de placeholders
+    for p in doc.paragraphs:
+        for run in p.runs:
+            for k, v in data.items():
+                run.text = run.text.replace(f"{{{{{k}}}}}", v)
+    for t in doc.tables:
+        for r in t.rows:
+            for c in r.cells:
+                for p in c.paragraphs:
+                    for run in p.runs:
+                        for k, v in data.items():
+                            run.text = run.text.replace(f"{{{{{k}}}}}", v)
 
-    return output_docx, output_pdf
+    doc.save(docx_out)
 
+    # -----------------------------
+    # Función para generar PDF en hilo separado
+    # -----------------------------
+    pdf_generated = False
+
+    def convert_pdf_thread():
+        nonlocal pdf_generated
+        try:
+            pythoncom.CoInitialize()  # Inicializar COM en este hilo
+            convert(docx_out, pdf_out)
+            if os.path.exists(pdf_out):
+                pdf_generated = True
+        except Exception as e:
+            print("Error generando PDF en hilo:", e)
+
+    if platform.system().lower() == "windows":
+        thread = threading.Thread(target=convert_pdf_thread)
+        thread.start()
+        thread.join()  # Esperamos a que termine el PDF
+
+        if not pdf_generated:
+            print("PDF no se pudo generar después de intentar en hilo.")
+            pdf_out = None
+    else:
+        # En otros sistemas no se usa docx2pdf
+        pdf_out = None
+
+    # -----------------------------
+    # Devolver DOCX siempre, PDF si se generó
+    # -----------------------------
+    return docx_out, pdf_out if pdf_generated else None
