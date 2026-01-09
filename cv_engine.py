@@ -262,12 +262,12 @@ def parse_cv(pdf_path):
         "contacto": extract_contact(structured),
         "perfil": " ".join(sections["perfil"]),
         "skills": extract_skills(sections["skills"]),
-        "experiencia": sections["experiencia"],  # intacto
+        "experiencia": sections["experiencia"],
         "experiencia_formateada": format_experiencia_plantilla(sections["experiencia"]),
         "educacion": educacion_limpia,
         "certificaciones": certificaciones,
         "idiomas": extract_idiomas(sections["idiomas"]),
-        "proyectos": sections["proyectos"],                 # 👈 sigue crudo
+        "proyectos": sections["proyectos"],
         "proyectos_formateados": format_proyectos(sections["proyectos"])
     }
 
