@@ -103,6 +103,19 @@ def extract_contact(text):
     }
 
 
+def extract_certificaciones(educacion_lines):
+    certs = []
+    edu = []
+
+    for l in educacion_lines:
+        low = l.lower()
+        if any(k in low for k in ["cert", "ibm", "caelum", "oracle", "aws"]):
+            certs.append(l)
+        else:
+            edu.append(l)
+
+    return edu, certs
+
 SECTIONS = {
     "perfil": ["perfil profesional", "profile"],
     "experiencia": ["experiencia laboral", "work experience","experiencia profesional"],
@@ -161,6 +174,77 @@ def extract_idiomas(lines):
     return idiomas
 
 
+def format_experiencia_plantilla(lines):
+    bloques = []
+    actual = {
+        "fecha": "",
+        "empresa": "",
+        "puesto": "",
+        "funciones": []
+    }
+
+    for l in lines:
+        # Detectar fechas
+        if re.search(r'\d{2}/\d{4}|\d{4}-\d{4}', l):
+            if actual["fecha"]:
+                bloques.append(actual)
+                actual = {
+                    "fecha": "",
+                    "empresa": "",
+                    "puesto": "",
+                    "funciones": []
+                }
+            actual["fecha"] = l.strip()
+            continue
+
+        # Empresa (línea en mayúsculas o corta)
+        if l.isupper() and not actual["empresa"]:
+            actual["empresa"] = l
+            continue
+
+        # Puesto
+        if not actual["puesto"] and len(l.split()) <= 6:
+            actual["puesto"] = l
+            continue
+
+        # Funciones
+        actual["funciones"].append(l)
+
+    if actual["fecha"]:
+        bloques.append(actual)
+
+    # Convertir a texto final
+    salida = []
+    for b in bloques:
+        salida.append(
+            f"""{b['fecha']}
+Empresa: {b['empresa']}
+Puesto: {b['puesto']}
+Funciones:
+""" + "\n".join(f" {f}" for f in b["funciones"])
+        )
+
+    return "\n\n".join(salida)
+
+def format_proyectos(lines):
+    bloques = []
+    actual = []
+
+    for l in lines:
+        # Título del proyecto (línea corta o sin bullets)
+        if not l.startswith(("•", "-", "*")) and len(l.split()) <= 6:
+            if actual:
+                bloques.append("\n".join(actual))
+                actual = []
+            actual.append(l)
+        else:
+            actual.append(l)
+
+    if actual:
+        bloques.append("\n".join(actual))
+
+    return "\n\n".join(bloques)
+
 # =========================================================
 # 4. PARSER PRINCIPAL
 # =========================================================
@@ -171,14 +255,20 @@ def parse_cv(pdf_path):
     lines = split_lines(structured)
     sections = split_by_sections(lines)
 
+    educacion_limpia, certificaciones = extract_certificaciones(sections["educacion"])
+
     return {
-        "nombre": extract_name(lines) or "Nombre no detectado",
+        "nombre": extract_name(lines),
         "contacto": extract_contact(structured),
         "perfil": " ".join(sections["perfil"]),
         "skills": extract_skills(sections["skills"]),
-        "experiencia": sections["experiencia"],
-        "educacion": sections["educacion"],
-        "idiomas": extract_idiomas(sections["idiomas"])
+        "experiencia": sections["experiencia"],  # intacto
+        "experiencia_formateada": format_experiencia_plantilla(sections["experiencia"]),
+        "educacion": educacion_limpia,
+        "certificaciones": certificaciones,
+        "idiomas": extract_idiomas(sections["idiomas"]),
+        "proyectos": sections["proyectos"],                 # 👈 sigue crudo
+        "proyectos_formateados": format_proyectos(sections["proyectos"])
     }
 
 
@@ -195,26 +285,63 @@ def cv_json_to_docx_data(cv):
         "LINKEDIN": cv["contacto"]["linkedin"],
         "PERFIL": cv["perfil"],
         "SKILLS": ", ".join(cv["skills"]),
-        "EXPERIENCIA": "\n".join(cv["experiencia"]),
-        "EDUCACION": "\n".join(cv["educacion"]),
-        "IDIOMAS": "\n".join(f"{k}: {v}" for k, v in cv["idiomas"].items())
+        "FORMACION": "\n".join(cv["educacion"]),
+        "CERTIFICACIONES": "\n".join(cv["certificaciones"]),
+        "EXPERIENCIA_PLANTILLA": cv["experiencia_formateada"],
+        "IDIOMAS": "\n".join(f"{k}: {v}" for k, v in cv["idiomas"].items()),
+        "PROYECTOS": cv.get("proyectos_formateados", "")
     }
 
+def is_empty_value(v):
+    if v is None:
+        return True
+    if isinstance(v, str) and not v.strip():
+        return True
+    if isinstance(v, (list, dict)) and len(v) == 0:
+        return True
+    return False
 
-def replace_placeholders(doc, data):
+def replace_placeholders(doc, data, empty_text=""):
+    # --------- PÁRRAFOS ---------
     for p in doc.paragraphs:
-        for run in p.runs:
-            for k, v in data.items():
-                run.text = run.text.replace(f"{{{{{k}}}}}", v)
+        full_text = p.text
 
+        for k, v in data.items():
+            placeholder = f"{{{{{k}}}}}"
+
+            if placeholder not in full_text:
+                continue
+
+            if is_empty_value(v):
+                # Si el párrafo SOLO contiene el placeholder → borrar párrafo
+                if full_text.strip() == placeholder:
+                    p.text = ""
+                else:
+                    # Si está mezclado con texto → reemplazar por texto alternativo
+                    p.text = full_text.replace(placeholder, empty_text)
+            else:
+                p.text = full_text.replace(placeholder, str(v))
+
+    # --------- TABLAS ---------
     for t in doc.tables:
         for r in t.rows:
             for c in r.cells:
                 for p in c.paragraphs:
-                    for run in p.runs:
-                        for k, v in data.items():
-                            run.text = run.text.replace(f"{{{{{k}}}}}", v)
+                    full_text = p.text
 
+                    for k, v in data.items():
+                        placeholder = f"{{{{{k}}}}}"
+
+                        if placeholder not in full_text:
+                            continue
+
+                        if is_empty_value(v):
+                            if full_text.strip() == placeholder:
+                                p.text = ""
+                            else:
+                                p.text = full_text.replace(placeholder, empty_text)
+                        else:
+                            p.text = full_text.replace(placeholder, str(v))
 
 def generate_cv_from_template(template_path, cv_json, output_dir="output"):
     """
@@ -249,10 +376,8 @@ def generate_cv_from_template(template_path, cv_json, output_dir="output"):
     data = cv_json_to_docx_data(cv_json)
 
     # Reemplazo de placeholders
-    for p in doc.paragraphs:
-        for run in p.runs:
-            for k, v in data.items():
-                run.text = run.text.replace(f"{{{{{k}}}}}", v)
+    replace_placeholders(doc, data)
+    
     for t in doc.tables:
         for r in t.rows:
             for c in r.cells:
