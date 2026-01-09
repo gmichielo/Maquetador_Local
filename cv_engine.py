@@ -343,6 +343,32 @@ def replace_placeholders(doc, data, empty_text=""):
                         else:
                             p.text = full_text.replace(placeholder, str(v))
 
+def replace_placeholders_preserve_style(doc, data, empty_text=""):
+    def replace_in_runs(runs, data):
+        for run in runs:
+            for k, v in data.items():
+                placeholder = f"{{{{{k}}}}}"
+
+                if placeholder not in run.text:
+                    continue
+
+                if is_empty_value(v):
+                    run.text = run.text.replace(placeholder, empty_text)
+                else:
+                    run.text = run.text.replace(placeholder, str(v))
+
+    # --------- PÁRRAFOS ---------
+    for p in doc.paragraphs:
+        replace_in_runs(p.runs, data)
+
+    # --------- TABLAS ---------
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    replace_in_runs(p.runs, data)
+
+
 def generate_cv_from_template(template_path, cv_json, output_dir="output"):
     """
     Genera un DOCX y un PDF desde la plantilla usando docx2pdf.
@@ -376,15 +402,7 @@ def generate_cv_from_template(template_path, cv_json, output_dir="output"):
     data = cv_json_to_docx_data(cv_json)
 
     # Reemplazo de placeholders
-    replace_placeholders(doc, data)
-    
-    for t in doc.tables:
-        for r in t.rows:
-            for c in r.cells:
-                for p in c.paragraphs:
-                    for run in p.runs:
-                        for k, v in data.items():
-                            run.text = run.text.replace(f"{{{{{k}}}}}", v)
+    replace_placeholders_preserve_style(doc, data)
 
     doc.save(docx_out)
 
