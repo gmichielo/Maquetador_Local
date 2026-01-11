@@ -64,7 +64,6 @@ def normalize_experience_lines(lines):
         cleaned.append(l)
     return cleaned
 
-
 # =========================================================
 # 3. EXTRACCIÓN
 # =========================================================
@@ -146,9 +145,10 @@ def split_by_sections(lines):
 
         low = line_clean.lower()
         matched = False
+
         for k, keys in SECTIONS.items():
             for key in keys:
-                if key in low:
+                if low == key:   # 👈 SOLO si ES el header
                     current = k
                     matched = True
                     break
@@ -185,10 +185,25 @@ def extract_skills(lines):
 
 def extract_idiomas(lines):
     idiomas = {}
-    for l in lines:
+
+    for i, l in enumerate(lines):
+        low = l.lower()
+
+        # ---- FORMATO NORMAL (Español: Nativo) ----
         matches = re.findall(r'([A-Za-zÁÉÍÓÚáéíóú]+)\s*[:\-]\s*(\w+)', l)
         for lang, lvl in matches:
-            idiomas[lang] = lvl
+            idiomas[lang.capitalize()] = lvl.capitalize()
+
+        # ---- EUROPASS: Mother tongue(s) ----
+        if "mother tongue" in low:
+            if i + 1 < len(lines):
+                idiomas[lines[i + 1].strip().capitalize()] = "Nativo"
+
+        # ---- EUROPASS: ENGLISH C1 C1 C1 ----
+        m = re.match(r'^([A-Z]+)\s+(A1|A2|B1|B2|C1|C2)', l)
+        if m:
+            idiomas[m.group(1).capitalize()] = m.group(2)
+
     return idiomas
 
 DATE_REGEX = re.compile(
@@ -220,16 +235,54 @@ DATE_REGEX = re.compile(
     re.IGNORECASE | re.VERBOSE
 )
 
+def format_experiencia_bloques(bloques):
+    salida = []
+    for b in bloques:
+        salida.append(
+            f"""{b['fecha']}
+Empresa: {b['empresa']}
+Puesto: {b['puesto']}
+Funciones:
+""" + "\n".join(f"• {f}" for f in b["funciones"])
+        )
+    return "\n\n".join(salida)
+
 def format_experiencia_plantilla(lines):
     bloques = []
     actual = None
 
     for l in lines:
+        l = l.strip()
         if not l:
             continue
 
-        # -------- EMPRESA --------
-        if l.isupper():
+        # -------- FECHA SOLA --------
+        if DATE_REGEX.search(l) and len(l.split()) <= 6:
+            if actual:
+                actual["fecha"] = l
+            continue
+
+        # -------- PUESTO + FECHA (EUROPASS) --------
+        if DATE_REGEX.search(l) and " – " in l:
+            if actual:
+                actual["puesto"] = l.split(" – ")[0].strip()
+                actual["fecha"] = " – ".join(l.split(" – ")[1:])
+            continue
+
+        # -------- EMPRESA (EUROPASS ICONO / TEXTO) --------
+        if "–" in l and any(city in l.lower() for city in ["madrid", "gijon", "oviedo", "spain"]):
+            if actual:
+                bloques.append(actual)
+            actual = {
+                "empresa": l.replace("", "").strip(),
+                "puesto": "",
+                "fecha": "",
+                "funciones": []
+            }
+            continue
+
+        # -------- EMPRESA CLÁSICA --------
+        if l.isupper() and len(l.split()) <= 6:
             if actual:
                 bloques.append(actual)
             actual = {
@@ -241,11 +294,6 @@ def format_experiencia_plantilla(lines):
             continue
 
         if not actual:
-            continue
-
-        # -------- FECHA --------
-        if DATE_REGEX.search(l):
-            actual["fecha"] = l
             continue
 
         # -------- PUESTO --------
@@ -298,12 +346,79 @@ def clean_bullets(lines):
 # 4. PARSER PRINCIPAL
 # =========================================================
 
+def is_europass(text):
+    markers = [
+        "europass",
+        "mother tongue",
+        "language skills",
+        "education and training"
+    ]
+    low = text.lower()
+    return any(m in low for m in markers)
+
+def parse_experiencia_europass(lines):
+    bloques = []
+
+    empresa = None
+    puesto = None
+    fecha = None
+    funciones = []
+
+    for l in lines:
+        l = l.strip()
+        if not l:
+            continue
+
+        # Empresa (empresa – ciudad, país)
+        if " – " in l and any(x in l.lower() for x in ["spain", "madrid", "gijon", "oviedo"]):
+            if empresa:
+                bloques.append({
+                    "empresa": empresa,
+                    "puesto": puesto or "",
+                    "fecha": fecha or "",
+                    "funciones": funciones
+                })
+            empresa = l.replace("", "").strip()
+            puesto = None
+            fecha = None
+            funciones = []
+            continue
+
+        # Puesto + fecha
+        if DATE_REGEX.search(l) and " – " in l:
+            parts = l.split(" – ")
+            puesto = parts[0].strip()
+            fecha = " – ".join(parts[1:])
+            continue
+
+        # Funciones
+        if l.startswith(("•", "-", "*")) or len(l.split()) > 4:
+            funciones.append(l.lstrip("•-* ").strip())
+
+    if empresa:
+        bloques.append({
+            "empresa": empresa,
+            "puesto": puesto or "",
+            "fecha": fecha or "",
+            "funciones": funciones
+        })
+
+    return bloques
+
 def parse_cv(pdf_path):
     raw = read_pdf(pdf_path)
     structured = rebuild_structure(raw)
     lines = split_lines(structured)
     sections = split_by_sections(lines)
-    sections["experiencia"] = normalize_experience_lines(sections["experiencia"])
+
+    if is_europass(raw):
+        bloques = parse_experiencia_europass(sections["experiencia"])
+        experiencia_formateada = format_experiencia_bloques(bloques)
+        experiencia = sections["experiencia"]
+    else:
+        sections["experiencia"] = normalize_experience_lines(sections["experiencia"])
+        experiencia = sections["experiencia"]
+        experiencia_formateada = format_experiencia_plantilla(experiencia)
 
     educacion_limpia, certificaciones = extract_certificaciones(sections["educacion"])
 
@@ -312,8 +427,8 @@ def parse_cv(pdf_path):
         "contacto": extract_contact(structured),
         "perfil": " ".join(sections["perfil"]),
         "skills": extract_skills(sections["skills"]),
-        "experiencia": sections["experiencia"],
-        "experiencia_formateada": format_experiencia_plantilla(sections["experiencia"]),
+        "experiencia": experiencia,
+        "experiencia_formateada": experiencia_formateada,
         "educacion": educacion_limpia,
         "certificaciones": certificaciones,
         "idiomas": extract_idiomas(sections["idiomas"]),
