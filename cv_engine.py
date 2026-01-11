@@ -56,6 +56,14 @@ def rebuild_structure(text):
 def split_lines(text):
     return [l.strip() for l in text.split("\n") if len(l.strip()) > 2]
 
+def normalize_experience_lines(lines):
+    cleaned = []
+    for l in lines:
+        l = l.replace("|", "").strip()
+        l = re.sub(r'^[●•\-]\s*', '', l)
+        cleaned.append(l)
+    return cleaned
+
 
 # =========================================================
 # 3. EXTRACCIÓN
@@ -133,7 +141,7 @@ def split_by_sections(lines):
     for line in lines:
         low = line.lower()
         for k, keys in SECTIONS.items():
-            if any(h in low for h in keys):
+            if re.fullmatch(rf"({'|'.join(keys)})", low.strip()):
                 current = k
                 break
         else:
@@ -173,47 +181,75 @@ def extract_idiomas(lines):
             idiomas[lang] = lvl
     return idiomas
 
+DATE_REGEX = re.compile(
+    r"""
+    (
+        # 03/2025 - 09/2025
+        \d{2}/\d{4}\s*[-–]\s*(\d{2}/\d{4}|actualidad|present)
+        |
+        # 2013 - 2014
+        \d{4}\s*[-–]\s*(\d{4}|actualidad|present)
+        |
+        # Mar 2015 - Sep 2017
+        (ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic|
+         enero|febrero|marzo|abril|mayo|junio|julio|agosto|
+         septiembre|setiembre|octubre|noviembre|diciembre|
+         jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)
+        \s+\d{4}\s*[-–]\s*
+        (
+            (ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic|
+             enero|febrero|marzo|abril|mayo|junio|julio|agosto|
+             septiembre|setiembre|octubre|noviembre|diciembre|
+             jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)
+            \s+\d{4}
+            |
+            actualidad|present
+        )
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE
+)
 
 def format_experiencia_plantilla(lines):
     bloques = []
-    actual = {
-        "fecha": "",
-        "empresa": "",
-        "puesto": "",
-        "funciones": []
-    }
+    actual = None
 
     for l in lines:
-        # Detectar fechas
-        if re.search(r'\d{2}/\d{4}|\d{4}-\d{4}', l):
-            if actual["fecha"]:
+        if not l:
+            continue
+
+        # -------- EMPRESA --------
+        if l.isupper():
+            if actual:
                 bloques.append(actual)
-                actual = {
-                    "fecha": "",
-                    "empresa": "",
-                    "puesto": "",
-                    "funciones": []
-                }
-            actual["fecha"] = l.strip()
+            actual = {
+                "empresa": l,
+                "puesto": "",
+                "fecha": "",
+                "funciones": []
+            }
             continue
 
-        # Empresa (línea en mayúsculas o corta)
-        if l.isupper() and not actual["empresa"]:
-            actual["empresa"] = l
+        if not actual:
             continue
 
-        # Puesto
-        if not actual["puesto"] and len(l.split()) <= 6:
+        # -------- FECHA --------
+        if DATE_REGEX.search(l):
+            actual["fecha"] = l
+            continue
+
+        # -------- PUESTO --------
+        if not actual["puesto"]:
             actual["puesto"] = l
             continue
 
-        # Funciones
+        # -------- FUNCIONES --------
         actual["funciones"].append(l)
 
-    if actual["fecha"]:
+    if actual:
         bloques.append(actual)
 
-    # Convertir a texto final
+    # -------- FORMATO FINAL --------
     salida = []
     for b in bloques:
         salida.append(
@@ -221,7 +257,7 @@ def format_experiencia_plantilla(lines):
 Empresa: {b['empresa']}
 Puesto: {b['puesto']}
 Funciones:
-""" + "\n".join(f" {f}" for f in b["funciones"])
+""" + "\n".join(f"• {f}" for f in b["funciones"])
         )
 
     return "\n\n".join(salida)
@@ -245,6 +281,9 @@ def format_proyectos(lines):
 
     return "\n\n".join(bloques)
 
+def clean_bullets(lines):
+    return [re.sub(r'^[•\-\*]\s*', '', l) for l in lines]
+
 # =========================================================
 # 4. PARSER PRINCIPAL
 # =========================================================
@@ -254,6 +293,7 @@ def parse_cv(pdf_path):
     structured = rebuild_structure(raw)
     lines = split_lines(structured)
     sections = split_by_sections(lines)
+    sections["experiencia"] = normalize_experience_lines(sections["experiencia"])
 
     educacion_limpia, certificaciones = extract_certificaciones(sections["educacion"])
 
