@@ -124,12 +124,13 @@ def extract_certificaciones(educacion_lines):
 
     return edu, certs
 
+
 SECTIONS = {
     "perfil": ["perfil profesional", "profile", "summary", "about me"],
     "experiencia": ["experiencia laboral", "work experience", "experiencia profesional", "work history"],
     "educacion": ["educacion", "education", "certificaciones", "formacion academica", "education and training"],
     "skills": ["skills", "habilidades", "experticia tecnica", "competencias", "skills & competencies"],
-    "idiomas": ["idiomas", "languages", "language","language skilld"],
+    "idiomas": ["idiomas", "languages", "language","language skills"],
     "proyectos": ["proyectos", "proyectos destacados", "projects"]
 }
 
@@ -335,7 +336,9 @@ def cv_json_to_docx_data(cv):
         "PERFIL": cv["perfil"],
         "SKILLS": ", ".join(cv["skills"]),
         "FORMACION": "\n".join(cv["educacion"]),
+        "EDUCACION": "\n".join(cv["educacion"]),
         "CERTIFICACIONES": "\n".join(cv["certificaciones"]),
+        "EXPERIENCIA": cv["experiencia"],
         "EXPERIENCIA_PLANTILLA": cv["experiencia_formateada"],
         "IDIOMAS": "\n".join(f"• {k}: {v}" for k, v in cv["idiomas"].items()),
         "PROYECTOS": cv.get("proyectos_formateados", "")
