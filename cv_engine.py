@@ -148,7 +148,8 @@ def split_by_sections(lines):
 
         for k, keys in SECTIONS.items():
             for key in keys:
-                if low == key:   # 👈 SOLO si ES el header
+                # 👇 HEADER si la línea EMPIEZA por el nombre del header
+                if low.startswith(key):
                     current = k
                     matched = True
                     break
@@ -159,6 +160,7 @@ def split_by_sections(lines):
             data[current].append(line_clean)
 
     return data
+
 
 
 def extract_skills(lines):
@@ -210,10 +212,10 @@ DATE_REGEX = re.compile(
     r"""
     (
         # 03/2025 - 09/2025
-        \d{2}/\d{4}\s*[-–]\s*(\d{2}/\d{4}|actualidad|present)
+        \d{2}/\d{4}\s*[-–]\s*(\d{2}/\d{4}|actualidad|present|current)
         |
         # 2013 - 2014
-        \d{4}\s*[-–]\s*(\d{4}|actualidad|present)
+        \d{4}\s*[-–]\s*(\d{4}|actualidad|present|current)
         |
         # Mar 2015 - Sep 2017
         (ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic|
@@ -228,7 +230,7 @@ DATE_REGEX = re.compile(
              jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)
             \s+\d{4}
             |
-            actualidad|present
+            actualidad|present|current
         )
     )
     """,
