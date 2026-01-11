@@ -125,12 +125,12 @@ def extract_certificaciones(educacion_lines):
     return edu, certs
 
 SECTIONS = {
-    "perfil": ["perfil profesional", "profile"],
-    "experiencia": ["experiencia laboral", "work experience","experiencia profesional"],
-    "educacion": ["educacion", "education","certificaciones","formacion academica"],
-    "skills": ["skills", "habilidades","experticia tecnica"],
-    "idiomas": ["idiomas", "languages", "language"],
-    "proyectos":["proyectos","proyectos destacados"]
+    "perfil": ["perfil profesional", "profile", "summary", "about me"],
+    "experiencia": ["experiencia laboral", "work experience", "experiencia profesional", "work history"],
+    "educacion": ["educacion", "education", "certificaciones", "formacion academica", "education and training"],
+    "skills": ["skills", "habilidades", "experticia tecnica", "competencias", "skills & competencies"],
+    "idiomas": ["idiomas", "languages", "language","language skilld"],
+    "proyectos": ["proyectos", "proyectos destacados", "projects"]
 }
 
 
@@ -139,14 +139,23 @@ def split_by_sections(lines):
     current = None
 
     for line in lines:
-        low = line.lower()
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+
+        low = line_clean.lower()
+        matched = False
         for k, keys in SECTIONS.items():
-            if re.fullmatch(rf"({'|'.join(keys)})", low.strip()):
-                current = k
+            for key in keys:
+                if key in low:
+                    current = k
+                    matched = True
+                    break
+            if matched:
                 break
-        else:
-            if current:
-                data[current].append(line)
+
+        if not matched and current:
+            data[current].append(line_clean)
 
     return data
 
