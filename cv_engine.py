@@ -328,7 +328,7 @@ def cv_json_to_docx_data(cv):
         "FORMACION": "\n".join(cv["educacion"]),
         "CERTIFICACIONES": "\n".join(cv["certificaciones"]),
         "EXPERIENCIA_PLANTILLA": cv["experiencia_formateada"],
-        "IDIOMAS": "\n".join(f"{k}: {v}" for k, v in cv["idiomas"].items()),
+        "IDIOMAS": "\n".join(f"• {k}: {v}" for k, v in cv["idiomas"].items()),
         "PROYECTOS": cv.get("proyectos_formateados", "")
     }
 
