@@ -21,43 +21,47 @@ PLANTILLAS = {
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        pdf_file = request.files["cv_pdf"]
-        plantilla_id = request.form["plantilla"]
+        pdf_file = request.files.get("cv_pdf")
+        plantilla_id = request.form.get("plantilla")
 
+        if not pdf_file or not plantilla_id:
+            return render_template("index.html", success=False, error="Faltan datos")
+
+        print("📄 CV recibido:", pdf_file.filename)
+        print("📄 Plantilla:", plantilla_id)
+
+        # Limpiar output
         for f in os.listdir(OUTPUT_FOLDER):
             os.remove(os.path.join(OUTPUT_FOLDER, f))
 
-        # Guardar PDF subido
         pdf_path = os.path.join(UPLOAD_FOLDER, pdf_file.filename)
         pdf_file.save(pdf_path)
 
-        # Obtener plantilla
-        plantilla_path = os.path.join(TEMPLATES_FOLDER, PLANTILLAS.get(plantilla_id))
-
-        # Parsear CV
-        cv_json = parse_cv(pdf_path)
-
-        # Generar DOCX y PDF
-        docx_path, pdf_out = generate_cv_from_template(
-        plantilla_path,
-        cv_json,
-        OUTPUT_FOLDER
+        plantilla_path = os.path.join(
+            TEMPLATES_FOLDER,
+            PLANTILLAS.get(plantilla_id)
         )
 
-        docx_name = os.path.basename(docx_path)
-        pdf_name = os.path.basename(pdf_out) if pdf_out and os.path.exists(pdf_out) else None
+        print("🔍 Parseando CV...")
+        cv_json = parse_cv(pdf_path)
+        print("✅ CV parseado:")
+        print(cv_json)
 
-        # Renderizar template con archivos recién generados
+        print("📝 Generando CV final...")
+        docx_path, pdf_out = generate_cv_from_template(
+            plantilla_path,
+            cv_json,
+            OUTPUT_FOLDER
+        )
+
         return render_template(
             "index.html",
             success=True,
-            docx=docx_name,
-            pdf=pdf_name
+            docx=os.path.basename(docx_path),
+            pdf=os.path.basename(pdf_out) if pdf_out else None
         )
 
-    # GET: mostrar página sin archivos
     return render_template("index.html", success=False)
-
 
 @app.route("/download/<filename>")
 def download(filename):
